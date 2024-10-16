@@ -91,7 +91,7 @@ func LoadModel(model string, maxArraySize int) (*GGML, error) {
 
 // NewLlamaServer will run a server for the given GPUs
 // The gpu list must be a single family.
-func NewLlamaServer(gpus discover.GpuInfoList, model string, ggml *GGML, adapters, projectors []string, opts api.Options, numParallel int) (LlamaServer, error) {
+func NewLlamaServer(gpus discover.GpuInfoList, model string, ggml *GGML, adapters, projectors []string, opts api.Options, numParallel int, extraCmd string) (LlamaServer, error) {
 	var err error
 	var cpuRunner string
 	var estimate MemoryEstimate
@@ -296,6 +296,21 @@ func NewLlamaServer(gpus discover.GpuInfoList, model string, ggml *GGML, adapter
 			slog.Debug("ResolveTCPAddr failed ", "error", err)
 			port = rand.Intn(65535-49152) + 49152 // get a random port in the ephemeral range
 		}
+
+		switch extraCmd {
+		case "reranking": // reranking implicitly enables embedding and can't be set with --embedding
+			for i, p := range params {
+				if p == "--embedding" {
+					params[i] = "--reranking"
+					goto done
+				}
+			}
+			params = append(params, "--reranking")
+		case "":
+		default:
+			slog.Info(fmt.Sprintf("extraCmd %s unhandled\n", extraCmd))
+		}
+	done:
 		finalParams := append(params, "--port", strconv.Itoa(port))
 
 		pathEnv := "LD_LIBRARY_PATH"
