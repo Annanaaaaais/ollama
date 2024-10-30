@@ -63,28 +63,6 @@ jobs:
       - name: Set Version
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'ollama'
-          credentials_json: '${{ secrets.GOOGLE_SIGNING_CREDENTIALS }}'
-      - run: echo "${{ vars.OLLAMA_CERT }}" > ollama_inc.crt
-      - name: install Windows SDK 8.1 to get signtool
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading SDK"
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=323507" -OutFile "${env:RUNNER_TEMP}\sdksetup.exe"
-          Start-Process "${env:RUNNER_TEMP}\sdksetup.exe" -ArgumentList @("/q") -NoNewWindow -Wait
-          write-host "Win SDK 8.1 installed"
-          gci -path 'C:\Program Files (x86)\Windows Kits\' -r -fi 'signtool.exe'
-      - name: install signing plugin
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading plugin"
-          Invoke-WebRequest -Uri "https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/cng-v1.0/kmscng-1.0-windows-amd64.zip" -OutFile "${env:RUNNER_TEMP}\plugin.zip"
-          Expand-Archive -Path "${env:RUNNER_TEMP}\plugin.zip" -DestinationPath ${env:RUNNER_TEMP}\plugin\
-          write-host "Installing plugin"
-          & "${env:RUNNER_TEMP}\plugin\*\kmscng.msi" /quiet
-          write-host "plugin installed"
       - name: Install msys2
         run: |
           $msys2_url="https://github.com/msys2/msys2-installer/releases/download/2024-07-27/msys2-x86_64-20240727.exe"
@@ -137,28 +115,6 @@ jobs:
       - name: Set Version
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'ollama'
-          credentials_json: '${{ secrets.GOOGLE_SIGNING_CREDENTIALS }}'
-      - run: echo "${{ vars.OLLAMA_CERT }}" > ollama_inc.crt
-      - name: install Windows SDK 8.1 to get signtool
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading SDK"
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=323507" -OutFile "${env:RUNNER_TEMP}\sdksetup.exe"
-          Start-Process "${env:RUNNER_TEMP}\sdksetup.exe" -ArgumentList @("/q") -NoNewWindow -Wait
-          write-host "Win SDK 8.1 installed"
-          gci -path 'C:\Program Files (x86)\Windows Kits\' -r -fi 'signtool.exe'
-      - name: install signing plugin
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading plugin"
-          Invoke-WebRequest -Uri "https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/cng-v1.0/kmscng-1.0-windows-amd64.zip" -OutFile "${env:RUNNER_TEMP}\plugin.zip"
-          Expand-Archive -Path "${env:RUNNER_TEMP}\plugin.zip" -DestinationPath ${env:RUNNER_TEMP}\plugin\
-          write-host "Installing plugin"
-          & "${env:RUNNER_TEMP}\plugin\*\kmscng.msi" /quiet
-          write-host "plugin installed"
       - name: Install msys2
         run: |
           $msys2_url="https://github.com/msys2/msys2-installer/releases/download/2024-07-27/msys2-x86_64-20240727.exe"
@@ -230,28 +186,6 @@ jobs:
       - name: Set Version
         shell: bash
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
-      - uses: 'google-github-actions/auth@v2'
-        with:
-          project_id: 'ollama'
-          credentials_json: '${{ secrets.GOOGLE_SIGNING_CREDENTIALS }}'
-      - run: echo "${{ vars.OLLAMA_CERT }}" > ollama_inc.crt
-      - name: install Windows SDK 8.1 to get signtool
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading SDK"
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=323507" -OutFile "${env:RUNNER_TEMP}\sdksetup.exe"
-          Start-Process "${env:RUNNER_TEMP}\sdksetup.exe" -ArgumentList @("/q") -NoNewWindow -Wait
-          write-host "Win SDK 8.1 installed"
-          gci -path 'C:\Program Files (x86)\Windows Kits\' -r -fi 'signtool.exe'
-      - name: install signing plugin
-        run: |
-          $ErrorActionPreference = "Stop"
-          write-host "downloading plugin"
-          Invoke-WebRequest -Uri "https://github.com/GoogleCloudPlatform/kms-integrations/releases/download/cng-v1.0/kmscng-1.0-windows-amd64.zip" -OutFile "${env:RUNNER_TEMP}\plugin.zip"
-          Expand-Archive -Path "${env:RUNNER_TEMP}\plugin.zip" -DestinationPath ${env:RUNNER_TEMP}\plugin\
-          write-host "Installing plugin"
-          & "${env:RUNNER_TEMP}\plugin\*\kmscng.msi" /quiet
-          write-host "plugin installed"
       - name: Install msys2
         run: |
           $msys2_url="https://github.com/msys2/msys2-installer/releases/download/2024-07-27/msys2-x86_64-20240727.exe"
