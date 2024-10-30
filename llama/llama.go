@@ -90,24 +90,29 @@ func PrintSystemInfo() string {
 }
 
 type ContextParams struct {
-	c C.struct_llama_context_params
+	c         C.struct_llama_context_params
+	Reranking bool
 }
 
-func NewContextParams(numCtx int, batchSize int, numSeqMax int, threads int, flashAttention bool) ContextParams {
+func NewContextParams(numCtx int, batchSize int, numSeqMax int, threads int, flashAttention bool, embedding bool, reranking bool) ContextParams {
 	params := C.llama_context_default_params()
 	params.n_ctx = C.uint(numCtx)
 	params.n_batch = C.uint(batchSize)
 	params.n_seq_max = C.uint(numSeqMax)
 	params.n_threads = C.int(threads)
 	params.n_threads_batch = params.n_threads
-	params.embeddings = C.bool(true)
+	params.embeddings = C.bool(embedding)
+	if reranking {
+		params.pooling_type = C.LLAMA_POOLING_TYPE_RANK
+	}
 	params.flash_attn = C.bool(flashAttention)
-	return ContextParams{c: params}
+	return ContextParams{c: params, Reranking: reranking}
 }
 
 type Context struct {
 	c          *C.struct_llama_context
 	numThreads int
+	Reranking  bool
 }
 
 func (c *Context) KvCacheClear() {
@@ -154,8 +159,16 @@ func (c *Context) GetEmbeddingsSeq(seqId int) []float32 {
 	if embeddings == nil {
 		return nil
 	}
-
-	return unsafe.Slice((*float32)(embeddings), c.Model().NEmbd())
+	var src []float32
+	if c.Reranking {
+		src = unsafe.Slice((*float32)(embeddings), 1)
+	} else {
+		src = unsafe.Slice((*float32)(embeddings), c.Model().NEmbd())
+	}
+	// Copy the embeddings to a new slice to avoid the memory being freed by the C code
+	res := make([]float32, len(src))
+	copy(res, src)
+	return res
 }
 
 func (c *Context) GetEmbeddingsIth(i int) []float32 {
@@ -163,8 +176,16 @@ func (c *Context) GetEmbeddingsIth(i int) []float32 {
 	if embeddings == nil {
 		return nil
 	}
-
-	return unsafe.Slice((*float32)(embeddings), c.Model().NEmbd())
+	var src []float32
+	if c.Reranking {
+		src = unsafe.Slice((*float32)(embeddings), 1)
+	} else {
+		src = unsafe.Slice((*float32)(embeddings), c.Model().NEmbd())
+	}
+	// Copy the embeddings to a new slice to avoid the memory being freed by the C code
+	res := make([]float32, len(src))
+	copy(res, src)
+	return res
 }
 
 type ModelParams struct {
@@ -231,6 +252,7 @@ func NewContextWithModel(model *Model, params ContextParams) (*Context, error) {
 	c := Context{
 		c:          C.llama_new_context_with_model(model.c, params.c),
 		numThreads: int(params.c.n_threads),
+		Reranking:  params.Reranking,
 	}
 	if c.c == (*C.struct_llama_context)(C.NULL) {
 		return nil, errors.New("unable to create llama context")
@@ -545,7 +567,7 @@ func MllamaSetCrossAttn(llamaContext *Context, clipContext *ClipContext, embed [
 // sampling
 // TODO: this is a temporary wrapper to allow calling C++ code from CGo
 type SamplingContext struct {
-	c *C.struct_gpt_sampler
+	c *C.struct_common_sampler
 }
 
 type SamplingParams struct {
@@ -568,7 +590,7 @@ type SamplingParams struct {
 }
 
 func NewSamplingContext(model *Model, params SamplingParams) *SamplingContext {
-	var cparams C.struct_gpt_sampler_cparams
+	var cparams C.struct_common_sampler_cparams
 	cparams.top_k = C.int32_t(params.TopK)
 	cparams.top_p = C.float(params.TopP)
 	cparams.min_p = C.float(params.MinP)
@@ -589,20 +611,20 @@ func NewSamplingContext(model *Model, params SamplingParams) *SamplingContext {
 	defer C.free(unsafe.Pointer(grammar))
 
 	cparams.grammar = grammar
-	context := &SamplingContext{c: C.gpt_sampler_cinit(model.c, &cparams)}
-	runtime.SetFinalizer(context, func(s *SamplingContext) { C.gpt_sampler_cfree(s.c) })
+	context := &SamplingContext{c: C.common_sampler_cinit(model.c, &cparams)}
+	runtime.SetFinalizer(context, func(s *SamplingContext) { C.common_sampler_cfree(s.c) })
 
 	return context
 }
 
 func (s *SamplingContext) Reset() {
-	C.gpt_sampler_creset(s.c)
+	C.common_sampler_creset(s.c)
 }
 
 func (s *SamplingContext) Sample(llamaContext *Context, idx int) int {
-	return int(C.gpt_sampler_csample(s.c, llamaContext.c, C.int(idx)))
+	return int(C.common_sampler_csample(s.c, llamaContext.c, C.int(idx)))
 }
 
 func (s *SamplingContext) Accept(id int, applyGrammar bool) {
-	C.gpt_sampler_caccept(s.c, C.llama_token(id), C.bool(applyGrammar))
+	C.common_sampler_caccept(s.c, C.llama_token(id), C.bool(applyGrammar))
 }
