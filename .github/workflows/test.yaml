@@ -1,5 +1,9 @@
 name: test
 
+env:
+  ROCM_WINDOWS_URL: https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe
+  # ROCM_VERSION_LINUX: 6.1.2
+
 concurrency:
   # For PRs, later CI runs preempt previous ones. e.g. a force push on a PR
   # cancels running CI jobs and starts all new ones.
@@ -99,17 +103,25 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: 'Install ROCm'
+      - name: 'Cache ROCm installer'
+        id: cache-rocm
+        uses: actions/cache@v4
+        with:
+          path: rocm-install.exe
+          key: ${{ env.ROCM_WINDOWS_URL }}
+      - name: 'Download ROCm'
+        if: steps.cache-rocm.outputs.cache-hit != 'true'
         run: |
           $ErrorActionPreference = "Stop"
-          write-host "downloading AMD HIP Installer"
-          Invoke-WebRequest -Uri "https://download.amd.com/developer/eula/rocm-hub/AMD-Software-PRO-Edition-24.Q3-WinSvr2022-For-HIP.exe" -OutFile "${env:RUNNER_TEMP}\rocm-install.exe"
-          write-host "Installing AMD HIP"
-          Start-Process "${env:RUNNER_TEMP}\rocm-install.exe" -ArgumentList '-install' -NoNewWindow -Wait
-          write-host "Completed AMD HIP"
+          Invoke-WebRequest -Uri "${env:ROCM_WINDOWS_URL}" -OutFile "rocm-install.exe"
+      # TODO - any extra flags we can pass to the installer to skip any pieces we don't need?
+      - name: 'Install ROCm'
+        run: |
+          Start-Process "rocm-install.exe" -ArgumentList '-install' -NoNewWindow -Wait
       - name: 'Verify ROCm'
         run: |
           & 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' --version
+      # TODO - try to cache the actual c:\msys2 directory, but split out updating the PATH so that is always completed
       - name: Install msys2
         run: |
           $msys2_url="https://github.com/msys2/msys2-installer/releases/download/2024-07-27/msys2-x86_64-20240727.exe"
@@ -128,7 +140,6 @@ jobs:
           gcc --version
           get-command make
           make --version
-      - run: go get ./...
       - run: |
           $gopath=(get-command go).source | split-path -parent
           import-module 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
@@ -137,6 +148,7 @@ jobs:
           $env:OLLAMA_SKIP_CPU_GENERATE="1"
           $env:HIP_PATH=$(Resolve-Path 'C:\Program Files\AMD\ROCm\*\bin\clang.exe' | split-path | split-path)
           $cores = (Get-ComputerInfo -Property CsProcessors).CsProcessors.NumberOfCores
+          write-host "Detected cores: $cores"
           write-host $env:HIP_PATH
           if (!(gcc --version | select-string -quiet clang)) { throw "wrong gcc compiler detected - must be clang" }
           make -C llama print-HIP_PATH print-HIP_LIB_DIR
@@ -154,6 +166,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # TODO - any extra flags we can pass to the installer to skip any pieces we don't need?
       - name: 'Install CUDA'
         run: |
           $ErrorActionPreference = "Stop"
