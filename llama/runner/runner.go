@@ -749,6 +749,77 @@ func (s *Server) health(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type RerankRequest struct {
+	Model       string   `json:"model"`
+	Query       string   `json:"query"`
+	TopN        int      `json:"top_n"`     // return top N documents
+	Documents   []string `json:"documents"` // list of documents to rerank
+	CachePrompt bool     `json:"cache_prompt"`
+}
+
+type RerankResponse struct {
+	Results []struct {
+		Index          int     `json:"index"`
+		RelevanceScore float32 `json:"relevance_score"`
+	} `json:"results"`
+}
+
+func (s *Server) rerank(w http.ResponseWriter, r *http.Request) {
+	var req RerankRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("bad rereank request: %s", err), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+
+	var rsp RerankResponse
+	rsp.Results = make([]struct {
+		Index          int     `json:"index"`
+		RelevanceScore float32 `json:"relevance_score"`
+	}, len(req.Documents))
+
+	for i, doc := range req.Documents {
+		// reranking prompt format: [BOS]query[EOS][SEP]doc[EOS]
+		p := ""
+		if !s.model.AddBOSToken() {
+			p += s.model.TokenToPiece(int(s.lc.GetTokenBOS()))
+		}
+		p += req.Query + s.model.TokenToPiece(int(s.lc.GetTokenEOS())) + s.model.TokenToPiece(int(s.lc.GetTokenSEP())) + doc
+		if !s.model.AddEOSToken() {
+			p += s.model.TokenToPiece(int(s.lc.GetTokenEOS()))
+		}
+		seq, err := s.NewSequence(p, nil, NewSequenceParams{embedding: true})
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create new sequence: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		s.mu.Lock()
+		for i, sq := range s.seqs {
+			if sq == nil {
+				seq.cache, seq.inputs, seq.numPast, err = s.cache.LoadCacheSlot(seq.inputs, req.CachePrompt)
+				if err != nil {
+					s.mu.Unlock()
+					http.Error(w, fmt.Sprintf("Failed to load cache: %v", err), http.StatusInternalServerError)
+					return
+				}
+				s.seqs[i] = seq
+				s.cond.Signal()
+				break
+			}
+		}
+		s.mu.Unlock()
+
+		score := <-seq.embedding
+		rsp.Results[i].Index = i
+		rsp.Results[i].RelevanceScore = score[0]
+	}
+
+	if err := json.NewEncoder(w).Encode(&rsp); err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode response: %v", err), http.StatusInternalServerError)
+	}
+}
+
 func (s *Server) loadModel(
 	params llama.ModelParams,
 	mpath string,
@@ -758,6 +829,7 @@ func (s *Server) loadModel(
 	flashAttention bool,
 	threads int,
 	multiUserCache bool,
+	reranking bool,
 ) {
 	llama.BackendInit()
 
@@ -767,7 +839,7 @@ func (s *Server) loadModel(
 		panic(err)
 	}
 
-	ctxParams := llama.NewContextParams(kvSize, s.batchSize*s.parallel, s.parallel, threads, flashAttention)
+	ctxParams := llama.NewContextParams(kvSize, s.batchSize*s.parallel, s.parallel, threads, flashAttention, reranking)
 	s.lc, err = llama.NewContextWithModel(s.model, ctxParams)
 	if err != nil {
 		panic(err)
@@ -817,6 +889,7 @@ func main() {
 	multiUserCache := flag.Bool("multiuser-cache", false, "optimize input cache algorithm for multiple users")
 	// Expose requirements as a JSON output to stdout
 	requirements := flag.Bool("requirements", false, "print json requirement information")
+	reranking := flag.Bool("reranking", false, "enable reranking (default: disabled)")
 
 	// These are either ignored by llama.cpp or have no significance to us
 	_ = flag.Bool("embedding", false, "enable embedding vector output (default: disabled)")
@@ -877,7 +950,7 @@ func main() {
 	}
 
 	server.ready.Add(1)
-	go server.loadModel(params, *mpath, *lpath, *ppath, *kvSize, *flashAttention, *threads, *multiUserCache)
+	go server.loadModel(params, *mpath, *lpath, *ppath, *kvSize, *flashAttention, *threads, *multiUserCache, *reranking)
 
 	server.cond = sync.NewCond(&server.mu)
 
@@ -896,6 +969,7 @@ func main() {
 	mux.HandleFunc("/embedding", server.embeddings)
 	mux.HandleFunc("/completion", server.completion)
 	mux.HandleFunc("/health", server.health)
+	mux.HandleFunc("/rerank", server.rerank)
 
 	httpServer := http.Server{
 		Handler: mux,
