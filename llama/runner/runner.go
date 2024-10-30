@@ -127,7 +127,10 @@ func (s *Server) NewSequence(prompt string, images []ImageData, params NewSequen
 
 	var sc *llama.SamplingContext
 	if params.samplingParams != nil {
-		sc = llama.NewSamplingContext(s.model, *params.samplingParams)
+		sc, err = llama.NewSamplingContext(s.model, *params.samplingParams)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process inputs: %w", err)
+		}
 		for _, input := range inputs {
 			if input.embed == nil {
 				sc.Accept(input.token, false)
@@ -428,7 +431,12 @@ func (s *Server) processBatch(tokenBatch *llama.Batch, embedBatch *llama.Batch) 
 		}
 
 		// sample a token
-		token := seq.samplingCtx.Sample(s.lc, seq.iBatch)
+		token, err := seq.samplingCtx.Sample(s.lc, seq.iBatch)
+		if err != nil {
+			slog.Error("failed to sample token", "error", err)
+			s.removeSequence(i, "error")
+			continue
+		}
 		seq.samplingCtx.Accept(token, true)
 		piece := s.model.TokenToPiece(token)
 
