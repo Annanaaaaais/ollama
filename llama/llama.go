@@ -92,6 +92,8 @@ import (
 	"unsafe"
 )
 
+// DO NOT MERGE
+
 var CpuFeatures = ""
 
 func BackendInit() {
