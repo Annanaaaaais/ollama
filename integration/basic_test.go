@@ -44,7 +44,10 @@ func TestUnicode(t *testing.T) {
 			"seed":        123,
 		},
 	}
-	GenerateTestHelper(ctx, t, req, []string{"散射", "频率"})
+	client, _, cleanup := InitServerConnection(ctx, t)
+	defer cleanup()
+	require.NoError(t, PullIfMissing(ctx, client, req.Model))
+	DoGenerate(ctx, t, client, req, []string{"散射", "频率"}, 120*time.Second, 30*time.Second)
 }
 
 func TestExtendedUnicodeOutput(t *testing.T) {
@@ -60,7 +63,10 @@ func TestExtendedUnicodeOutput(t *testing.T) {
 			"seed":        123,
 		},
 	}
-	GenerateTestHelper(ctx, t, req, []string{"😀", "😊", "😁", "😂", "😄", "😃"})
+	client, _, cleanup := InitServerConnection(ctx, t)
+	defer cleanup()
+	require.NoError(t, PullIfMissing(ctx, client, req.Model))
+	DoGenerate(ctx, t, client, req, []string{"😀", "😊", "😁", "😂", "😄", "😃"}, 120*time.Second, 30*time.Second)
 }
 
 func TestUnicodeModelDir(t *testing.T) {
